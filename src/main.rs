@@ -3,6 +3,7 @@ mod auth;
 mod model;
 mod poller;
 mod spotify;
+mod ui;
 use app::App;
 use auth::{build_auth_url, load_env, wait_for_code};
 use spotify::{get_current_track, get_token};

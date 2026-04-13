@@ -4,8 +4,8 @@ use reqwest::Client;
 use tokio::sync::mpsc::Sender;
 use tokio::time::{self, Duration, sleep};
 
-// Poll Spotify's "currently playing" endpoint repeatedly and send updates to "tx".
-// Replace `fetch_currently_playing` call with your real fetcher (returns `NowPlaying`).
+/// Poll Spotify's "currently playing" endpoint repeatedly and send updates to "tx".
+/// Replace `fetch_currently_playing` call with your real fetcher (returns `NowPlaying`).
 pub async fn spotify_poller(
     mut tx: Sender<NowPlaying>,
     client: Client,
