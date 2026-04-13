@@ -1,6 +1,7 @@
 mod app;
 mod auth;
 mod model;
+mod poller;
 mod spotify;
 use app::App;
 use auth::{build_auth_url, load_env, wait_for_code};
