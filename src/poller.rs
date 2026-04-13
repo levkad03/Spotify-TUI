@@ -1,3 +1,5 @@
+use std::any;
+
 use crate::model::NowPlaying;
 use anyhow::Error;
 use reqwest::Client;
@@ -7,7 +9,7 @@ use tokio::time::{self, Duration, sleep};
 /// Poll Spotify's "currently playing" endpoint repeatedly and send updates to "tx".
 /// Replace `fetch_currently_playing` call with your real fetcher (returns `NowPlaying`).
 pub async fn spotify_poller(
-    mut tx: Sender<NowPlaying>,
+    tx: Sender<NowPlaying>,
     client: Client,
     mut get_access_token: impl FnMut() -> Option<String> + Send + 'static,
     interval_secs: u64,
@@ -63,20 +65,8 @@ pub async fn spotify_poller(
     }
 }
 
-/// Placeholder: adapt this to your existing fetcher.
-/// Example signature you might already have: async fn fetch_currently_playing(client: &Client, token: &str) -> Result<NowPlaying, Error>
 async fn fetch_currently_playing(client: &Client, token: &str) -> Result<NowPlaying, Error> {
-    // ---- REPLACE THIS BODY with your real implementation ----
-    // This mock returns a static track to allow UI iteration.
-    let now = NowPlaying {
-        title: "Mock Song".into(),
-        artists: vec!["Mock Artist".into()],
-        album: "Mock Album".into(),
-        progress_ms: 30_000,
-        duration_ms: 180_000,
-        is_playing: true,
-        album_art_url: None,
-        fetched_at: std::time::Instant::now(),
-    };
-    Ok(now)
+    crate::spotify::get_current_track(client, token)
+        .await
+        .map_err(|e| anyhow::anyhow!("Spotify fetch error: {}", e))
 }

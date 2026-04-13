@@ -35,7 +35,7 @@ pub fn run_ui(
         // Drain incoming updates (non-blocking)
         match rx.try_recv() {
             Ok(now) => current = Some(now),
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {}
             Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
                 // Poller hung up; exit UI
                 terminal.draw(|f| {

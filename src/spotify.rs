@@ -1,3 +1,4 @@
+use crate::model::NowPlaying;
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -27,17 +28,67 @@ pub async fn get_token(client_id: &str, client_secret: &str, code: &str) -> Stri
     json.access_token
 }
 
-pub async fn get_current_track(token: &str) -> Option<String> {
-    let client = Client::new();
-
+pub async fn get_current_track(
+    client: &reqwest::Client,
+    token: &str,
+) -> Result<NowPlaying, Box<dyn std::error::Error>> {
     let res = client
         .get("https://api.spotify.com/v1/me/player/currently-playing")
         .bearer_auth(token)
         .send()
-        .await
-        .ok()?;
+        .await?;
 
-    let json: serde_json::Value = res.json().await.ok()?;
+    if res.status() == 204 {
+        // 204 No Content = nothing playing
+        return Ok(NowPlaying {
+            title: "No track playing".into(),
+            artists: vec![],
+            album: "".into(),
+            progress_ms: 0,
+            duration_ms: 0,
+            is_playing: false,
+            album_art_url: None,
+            fetched_at: std::time::Instant::now(),
+        });
+    }
 
-    Some(json["item"]["name"].as_str()?.to_string())
+    let json: serde_json::Value = res.json().await?;
+
+    let is_playing = json["is_playing"].as_bool().unwrap_or(false);
+    let progress_ms = json["progress_ms"].as_u64().unwrap_or(0);
+
+    let item = &json["item"];
+    let title = item["name"].as_str().unwrap_or("Unknown").to_string();
+
+    let artists: Vec<String> = item["artists"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|a| a["name"].as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let album = item["album"]["name"]
+        .as_str()
+        .unwrap_or("Unknown")
+        .to_string();
+    let duration_ms = item["duration_ms"].as_u64().unwrap_or(0);
+
+    let album_art_url = item["album"]["images"]
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|img| img["url"].as_str())
+        .map(|s| s.to_string());
+
+    Ok(NowPlaying {
+        title,
+        artists,
+        album,
+        progress_ms,
+        duration_ms,
+        is_playing,
+        album_art_url,
+        fetched_at: std::time::Instant::now(),
+    })
 }
