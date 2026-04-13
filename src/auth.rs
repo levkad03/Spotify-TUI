@@ -2,7 +2,7 @@ use dotenvy::dotenv;
 use std::env;
 use tiny_http::{Response, Server};
 
-fn load_env() -> (String, String) {
+pub fn load_env() -> (String, String) {
     dotenv().ok();
 
     let client_id = env::var("CLIENT_ID").unwrap();
