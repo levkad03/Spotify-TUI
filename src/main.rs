@@ -1,4 +1,5 @@
 mod auth;
+mod spotify;
 use auth::*;
 
 fn main() {
