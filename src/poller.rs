@@ -1,10 +1,8 @@
-use std::any;
-
 use crate::model::NowPlaying;
 use anyhow::Error;
 use reqwest::Client;
 use tokio::sync::mpsc::Sender;
-use tokio::time::{self, Duration, sleep};
+use tokio::time::{self, Duration};
 
 /// Poll Spotify's "currently playing" endpoint repeatedly and send updates to "tx".
 /// Replace `fetch_currently_playing` call with your real fetcher (returns `NowPlaying`).

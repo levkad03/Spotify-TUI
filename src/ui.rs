@@ -6,10 +6,10 @@ use crossterm::{
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Style},
-    text::Text,
-    widgets::{Block, Gauge, Paragraph, Wrap},
+    layout::{Alignment, Constraint, Direction, Layout},
+    style::{Color, Modifier, Style},
+    text::{Line, Span, Text},
+    widgets::{Block, Borders, Gauge, Paragraph, Wrap},
 };
 use std::io;
 use std::time::Duration;
@@ -20,7 +20,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 /// `control_tx` is used to send playback commands back to a control worker.
 pub fn run_ui(
     mut rx: Receiver<NowPlaying>,
-    mut control_tx: Sender<ControlCommand>,
+    control_tx: Sender<ControlCommand>,
 ) -> anyhow::Result<()> {
     // terminal init
     let mut stdout = io::stdout();
@@ -42,7 +42,7 @@ pub fn run_ui(
                     let block = Block::default()
                         .title("Disconnected")
                         .borders(ratatui::widgets::Borders::ALL);
-                    f.render_widget(block, f.size());
+                    f.render_widget(block, f.area());
                 })?;
                 cleanup_terminal(&mut terminal)?;
                 return Ok(());
@@ -51,54 +51,104 @@ pub fn run_ui(
 
         // Draw
         terminal.draw(|f| {
-            let size = f.size();
+            let size = f.area();
+
+            // 1. Render an outer border that wraps everything
+            let outer_block = Block::default()
+                .title(Span::styled(
+                    " Spotify TUI ",
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green));
+
+            // 2. Get the area *inside* the outer border
+            let inner_area = outer_block.inner(size);
+
+            // 3. Render the outer block first (just the border)
+            f.render_widget(outer_block, size);
+
+            // 4. Now split the inner area for your content (no extra margin needed)
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .margin(1)
+                .margin(1) // small padding inside the outer border
                 .constraints(
                     [
-                        Constraint::Length(3),
-                        Constraint::Length(3),
-                        Constraint::Min(3),
+                        Constraint::Length(5), // track info
+                        Constraint::Length(3), // progress gauge
+                        Constraint::Length(1), // help bar
                     ]
                     .as_ref(),
                 )
-                .split(size);
-
-            let header = Block::default()
-                .title("Spotify TUI")
-                .borders(ratatui::widgets::Borders::ALL);
-
-            f.render_widget(header, chunks[0]);
+                .split(inner_area);
 
             if let Some(now) = &current {
-                let title = Paragraph::new(Text::from(format!(
-                    "{} — {}",
-                    now.title,
-                    now.artists.join(", ")
-                )))
+                // Track info block
+                let play_icon = if now.is_playing { "▶  " } else { "⏸  " };
+                let track_block = Paragraph::new(Text::from(vec![
+                    Line::from(vec![
+                        Span::raw(play_icon),
+                        Span::styled(
+                            now.title.clone(),
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    ]),
+                    Line::from(vec![
+                        Span::raw("    "),
+                        Span::styled(now.artists.join(", "), Style::default().fg(Color::Cyan)),
+                    ]),
+                ]))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::DarkGray)),
+                )
                 .wrap(Wrap { trim: true });
-                f.render_widget(title, chunks[1]);
+                f.render_widget(track_block, chunks[0]);
 
+                // Progress gauge
+                let elapsed = now.elapsed_progress();
                 let ratio = if now.duration_ms > 0 {
-                    now.elapsed_progress() as f64 / now.duration_ms as f64
+                    elapsed as f64 / now.duration_ms as f64
                 } else {
                     0.0
                 };
+                let label = format!("{} / {}", fmt_ms(elapsed), fmt_ms(now.duration_ms));
                 let gauge = Gauge::default()
                     .block(
                         Block::default()
-                            .title(format!("{} • {}", now.album, fmt_ms(now.duration_ms)))
-                            .borders(ratatui::widgets::Borders::ALL),
+                            .title(Span::styled(
+                                format!(" {} ", now.album),
+                                Style::default().fg(Color::DarkGray),
+                            ))
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(Color::DarkGray)),
                     )
-                    .gauge_style(Style::default().fg(Color::Green))
-                    .ratio(ratio);
-                f.render_widget(gauge, chunks[2]);
+                    .gauge_style(Style::default().fg(Color::Green).bg(Color::Black))
+                    .ratio(ratio.clamp(0.0, 1.0))
+                    .label(label);
+                f.render_widget(gauge, chunks[1]);
             } else {
-                let empty = Paragraph::new("No track data yet")
-                    .block(Block::default().borders(ratatui::widgets::Borders::ALL));
-                f.render_widget(empty, chunks[1]);
+                let empty = Paragraph::new(Span::styled(
+                    "No track playing",
+                    Style::default().fg(Color::DarkGray),
+                ))
+                .block(Block::default().borders(Borders::ALL))
+                .alignment(Alignment::Center);
+                f.render_widget(empty, chunks[0]);
             }
+
+            // Help bar
+            let help = Paragraph::new(Span::styled(
+                "[space] play/pause   [n] next   [p] prev   [q] quit",
+                Style::default().fg(Color::DarkGray),
+            ))
+            .alignment(Alignment::Center);
+            f.render_widget(help, chunks[2]);
         })?;
 
         // Input handling with a small timeout so the UI remains responsive
