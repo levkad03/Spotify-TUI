@@ -9,6 +9,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
+    symbols::bar,
     text::{Line, Span, Text},
     widgets::{BarChart, Block, Borders, Gauge, Paragraph, Wrap},
 };
@@ -36,6 +37,19 @@ pub fn run_ui(
     let mut rng = rand::rng();
 
     loop {
+        // Recalculate bar count
+        // Get current terminal width to see how many bars we can fit
+        // Each bar is 2 wide + 1 gap = 3 columns per bar
+        let term_size = terminal.size()?;
+        let available_width = term_size.width.saturating_sub(4); // Subtract padding/borders
+        let ideal_bar_count = (available_width / 3) as usize;
+
+        // Resize the vector dynamically.
+        // .resize() keeps existing values and adds 0s if expanding.
+        if bars.len() != ideal_bar_count {
+            bars.resize(ideal_bar_count, 0);
+        }
+
         // Drain incoming updates (non-blocking)
         match rx.try_recv() {
             Ok(now) => current = Some(now),
@@ -170,6 +184,7 @@ pub fn run_ui(
             // Visualizer
             let bar_data: Vec<(&str, u64)> = bars.iter().map(|&h| ("", h)).collect();
             let visualizer = BarChart::default()
+                .data(&bar_data)
                 .block(
                     Block::default()
                         .title(" Visualizer")
