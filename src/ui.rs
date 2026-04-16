@@ -32,7 +32,7 @@ pub fn run_ui(
 
     let mut current: Option<NowPlaying> = None;
 
-    let mut bars = vec![0u64; 40]; // Adjust number of bars
+    let mut bar_states = vec![0.0f64; 40]; // Adjust number of bars
     let mut rng = rand::rng();
 
     loop {
@@ -45,8 +45,8 @@ pub fn run_ui(
 
         // Resize the vector dynamically.
         // .resize() keeps existing values and adds 0s if expanding.
-        if bars.len() != ideal_bar_count {
-            bars.resize(ideal_bar_count, 0);
+        if bar_states.len() != ideal_bar_count {
+            bar_states.resize(ideal_bar_count, 0.0f64);
         }
 
         // Drain incoming updates (non-blocking)
@@ -68,20 +68,26 @@ pub fn run_ui(
 
         // Update visualizer heights
         if let Some(now) = &current {
-            if now.is_playing {
-                for bar in bars.iter_mut() {
-                    let target = rng.random_range(1..15);
-                    // Smoothly transition heights
-                    if *bar < target {
-                        *bar += 1;
-                    } else if *bar > target {
-                        *bar -= 1;
+            for i in 0..bar_states.len() {
+                if now.is_playing {
+                    // Generate a random impulse
+                    let impulse = rng.random_range(0.0..15.0);
+
+                    // Fast rise: if the impulse is higher than the bar, jump to it
+                    if impulse > bar_states[i] {
+                        bar_states[i] = impulse;
+                    } else {
+                        // Slow fall: otherwise, let the bar float down
+                        // Multiply by a factor < 1.0
+                        bar_states[i] *= 0.9;
                     }
+                } else {
+                    // Fade to zero when paused
+                    bar_states[i] *= 0.8;
                 }
-            } else {
-                // Decay bars when paused
-                for bar in bars.iter_mut() {
-                    *bar = bar.saturating_sub(1);
+                // Ensure it doesn't stay at micro-values forever
+                if bar_states[i] < 0.1 {
+                    bar_states[i] = 0.0;
                 }
             }
         }
@@ -181,7 +187,8 @@ pub fn run_ui(
             }
 
             // Visualizer
-            let bar_data: Vec<(&str, u64)> = bars.iter().map(|&h| ("", h)).collect();
+            let bar_data: Vec<(&str, u64)> =
+                bar_states.iter().map(|&h| ("", h.round() as u64)).collect();
             let visualizer = BarChart::default()
                 .data(&bar_data)
                 .block(
@@ -207,7 +214,7 @@ pub fn run_ui(
         })?;
 
         // Input handling with a small timeout so the UI remains responsive
-        if event::poll(Duration::from_millis(200))? {
+        if event::poll(Duration::from_millis(50))? {
             if let CEvent::Key(key) = event::read()? {
                 match key.code {
                     KeyCode::Char('q') => {
