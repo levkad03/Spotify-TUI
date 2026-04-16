@@ -16,6 +16,11 @@ pub struct NowPlaying {
 
 impl NowPlaying {
     pub fn elapsed_progress(&self) -> u64 {
+        // If not playing, just return the server's progress_ms (don't advance)
+        if !self.is_playing {
+            return self.progress_ms;
+        }
+
         let since = Instant::now().saturating_duration_since(self.fetched_at);
         self.progress_ms
             .saturating_add(since.as_millis() as u64)

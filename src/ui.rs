@@ -3,7 +3,7 @@ use crossterm::{
     event::{self, Event as CEvent, KeyCode},
     execute, terminal,
 };
-use rand::{Rng, RngExt};
+use rand::RngExt;
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
