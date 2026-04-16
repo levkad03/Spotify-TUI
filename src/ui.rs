@@ -3,13 +3,14 @@ use crossterm::{
     event::{self, Event as CEvent, KeyCode},
     execute, terminal,
 };
+use rand::{Rng, RngExt};
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Gauge, Paragraph, Wrap},
+    widgets::{BarChart, Block, Borders, Gauge, Paragraph, Wrap},
 };
 use std::io;
 use std::time::Duration;
@@ -31,6 +32,9 @@ pub fn run_ui(
 
     let mut current: Option<NowPlaying> = None;
 
+    let mut bars = vec![0u64; 40]; // Adjust number of bars
+    let mut rng = rand::rng();
+
     loop {
         // Drain incoming updates (non-blocking)
         match rx.try_recv() {
@@ -46,6 +50,26 @@ pub fn run_ui(
                 })?;
                 cleanup_terminal(&mut terminal)?;
                 return Ok(());
+            }
+        }
+
+        // Update visualizer heights
+        if let Some(now) = &current {
+            if now.is_playing {
+                for bar in bars.iter_mut() {
+                    let target = rng.random_range(1..15);
+                    // Smoothly transition heights
+                    if *bar < target {
+                        *bar += 1;
+                    } else if *bar > target {
+                        *bar -= 1;
+                    }
+                }
+            } else {
+                // Decay bars when paused
+                for bar in bars.iter_mut() {
+                    *bar = bar.saturating_sub(1);
+                }
             }
         }
 
@@ -78,6 +102,7 @@ pub fn run_ui(
                     [
                         Constraint::Length(5), // track info
                         Constraint::Length(3), // progress gauge
+                        Constraint::Min(5),    // Visualizer (Dynamic Space)
                         Constraint::Length(1), // help bar
                     ]
                     .as_ref(),
@@ -142,13 +167,29 @@ pub fn run_ui(
                 f.render_widget(empty, chunks[0]);
             }
 
+            // Visualizer
+            let bar_data: Vec<(&str, u64)> = bars.iter().map(|&h| ("", h)).collect();
+            let visualizer = BarChart::default()
+                .block(
+                    Block::default()
+                        .title(" Visualizer")
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::DarkGray)),
+                )
+                .data(&bar_data)
+                .bar_width(2)
+                .bar_gap(1)
+                .style(Style::default().fg(Color::Green));
+
+            f.render_widget(visualizer, chunks[2]);
+
             // Help bar
             let help = Paragraph::new(Span::styled(
                 "[space] play/pause   [n] next   [p] prev   [q] quit",
                 Style::default().fg(Color::DarkGray),
             ))
             .alignment(Alignment::Center);
-            f.render_widget(help, chunks[2]);
+            f.render_widget(help, chunks[3]);
         })?;
 
         // Input handling with a small timeout so the UI remains responsive
