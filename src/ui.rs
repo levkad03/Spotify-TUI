@@ -9,7 +9,6 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    symbols::bar,
     text::{Line, Span, Text},
     widgets::{BarChart, Block, Borders, Gauge, Paragraph, Wrap},
 };
