@@ -10,7 +10,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{BarChart, Block, Borders, Gauge, Paragraph, Wrap},
+    widgets::{Bar, BarChart, BarGroup, Block, Borders, Gauge, Paragraph, Wrap},
 };
 use std::io;
 use std::time::Duration;
@@ -187,20 +187,29 @@ pub fn run_ui(
             }
 
             // Visualizer
-            let bar_data: Vec<(&str, u64)> =
-                bar_states.iter().map(|&h| ("", h.round() as u64)).collect();
+            let bar_data: Vec<Bar> = bar_states
+                .iter()
+                .enumerate()
+                .map(|(i, &h)| {
+                    let r = (i * 255 / bar_states.len()) as u8;
+                    let g = 255 - r;
+                    let color = Color::Rgb(r, g, 150);
+                    Bar::new(h.round() as u64).style(Style::default().fg(color))
+                })
+                .collect();
+
+            let group = BarGroup::default().bars(&bar_data);
+
             let visualizer = BarChart::default()
-                .data(&bar_data)
                 .block(
                     Block::default()
                         .title(" Visualizer")
                         .borders(Borders::ALL)
                         .border_style(Style::default().fg(Color::DarkGray)),
                 )
-                .data(&bar_data)
+                .data(group)
                 .bar_width(2)
-                .bar_gap(1)
-                .style(Style::default().fg(Color::Green));
+                .bar_gap(1);
 
             f.render_widget(visualizer, chunks[2]);
 
