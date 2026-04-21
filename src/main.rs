@@ -1,4 +1,3 @@
-mod app;
 mod auth;
 mod model;
 mod poller;
