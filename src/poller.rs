@@ -13,6 +13,10 @@ pub async fn spotify_poller(
     interval_secs: u64,
 ) {
     let mut interval = time::interval(Duration::from_secs(interval_secs));
+
+    let mut last_art_url: Option<String> = None;
+    let mut current_theme = (30, 215, 96);
+
     loop {
         interval.tick().await;
 
@@ -30,6 +34,7 @@ pub async fn spotify_poller(
                         is_playing: false,
                         album_art_url: None,
                         fetched_at: std::time::Instant::now(),
+                        theme_color: current_theme,
                     })
                     .await;
                 continue;
@@ -39,6 +44,25 @@ pub async fn spotify_poller(
         match fetch_currently_playing(&client, &token).await {
             Ok(mut now) => {
                 now.fetched_at = std::time::Instant::now();
+
+                // Adaptive UI color logic
+                // Only fetch new color if album art URL has changed
+                if now.album_art_url != last_art_url {
+                    if let Some(url) = &now.album_art_url {
+                        // Try to get dominant color from the new image
+                        if let Some(color) = crate::spotify::fetch_dominant_color(url).await {
+                            current_theme = color;
+                        }
+                    } else {
+                        // Fallback to Spotify Green if there is no album art
+                        current_theme = (30, 215, 96);
+                    }
+                    // Update our tracker
+                    last_art_url = now.album_art_url.clone();
+                }
+
+                // Apply the theme color to  the current update
+                now.theme_color = current_theme;
                 let _ = tx.send(now).await;
             }
 
@@ -56,6 +80,7 @@ pub async fn spotify_poller(
                         is_playing: false,
                         album_art_url: None,
                         fetched_at: std::time::Instant::now(),
+                        theme_color: current_theme,
                     })
                     .await;
             }

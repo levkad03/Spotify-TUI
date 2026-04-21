@@ -49,6 +49,7 @@ pub async fn get_current_track(
             is_playing: false,
             album_art_url: None,
             fetched_at: std::time::Instant::now(),
+            theme_color: (30, 215, 96), // Default spotify green
         });
     }
 
@@ -90,5 +91,19 @@ pub async fn get_current_track(
         is_playing,
         album_art_url,
         fetched_at: std::time::Instant::now(),
+        theme_color: (30, 215, 96), // Default spotify green
     })
+}
+
+pub async fn fetch_dominant_color(url: &str) -> Option<(u8, u8, u8)> {
+    let client = reqwest::Client::new();
+    let bytes = client.get(url).send().await.ok()?.bytes().await.ok()?;
+
+    let img = image::load_from_memory(&bytes).ok()?;
+
+    // Resize to 1x1 to effectively get the average color of the whole image
+    let rgb = img.thumbnail(1, 1).to_rgb8();
+    let pixel = rgb.get_pixel(0, 0);
+
+    Some((pixel[0], pixel[1], pixel[2]))
 }

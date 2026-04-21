@@ -12,6 +12,7 @@ pub struct NowPlaying {
 
     // when the server returned this snapshot (used to advance the progress locally)
     pub fetched_at: Instant,
+    pub theme_color: (u8, u8, u8),
 }
 
 impl NowPlaying {

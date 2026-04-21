@@ -30,7 +30,7 @@ pub fn run_ui(
 
     loop {
         // 1. Sync state: resize bars based on terminal width + check for new spotify data
-        let _ = sync_bars(&mut terminal, &mut bar_states);
+        let _ = sync_bars(&terminal, &mut bar_states);
 
         match rx.try_recv() {
             Ok(now) => current = Some(now),
@@ -45,7 +45,14 @@ pub fn run_ui(
         // 3. Draw: render all components
         terminal.draw(|f| {
             let area = f.area();
-            render_outer_frame(f, area);
+
+            let default_color = (30, 215, 96); // Spotify Green
+            let theme_color = current
+                .as_ref()
+                .map(|n| n.theme_color)
+                .unwrap_or(default_color);
+
+            render_outer_frame(f, area, theme_color);
 
             // Create layout inside the border
             let inner_area = Block::default().borders(Borders::ALL).inner(area);
@@ -62,11 +69,11 @@ pub fn run_ui(
             if let Some(now) = &current {
                 render_track_info(f, chunks[0], now);
                 render_progress_gauge(f, chunks[1], now);
+                render_visualizer(f, chunks[2], &bar_states, now);
             } else {
                 render_empty_state(f, chunks[0]);
             }
 
-            render_visualizer(f, chunks[2], &bar_states);
             render_help_bar(f, chunks[3]);
         })?;
 
@@ -85,21 +92,24 @@ pub fn run_ui(
     Ok(())
 }
 
-fn render_outer_frame(f: &mut Frame, area: Rect) {
+fn render_outer_frame(f: &mut Frame, area: Rect, theme_rgb: (u8, u8, u8)) {
+    let theme_color = Color::Rgb(theme_rgb.0, theme_rgb.1, theme_rgb.2);
     let block = Block::default()
         .title(Span::styled(
             " Spotify TUI ",
             Style::default()
-                .fg(Color::Green)
+                .fg(theme_color)
                 .add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Green));
+        .border_style(Style::default().fg(theme_color));
 
     f.render_widget(block, area);
 }
 
 fn render_track_info(f: &mut Frame, area: Rect, now: &NowPlaying) {
+    let (r, g, b) = now.theme_color;
+    let theme_color = Color::Rgb(r, g, b);
     let play_icon = if now.is_playing { "▶  " } else { "⏸  " };
     let text = Text::from(vec![
         Line::from(vec![
@@ -107,7 +117,7 @@ fn render_track_info(f: &mut Frame, area: Rect, now: &NowPlaying) {
             Span::styled(
                 &now.title,
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme_color)
                     .add_modifier(Modifier::BOLD),
             ),
         ]),
@@ -129,6 +139,8 @@ fn render_track_info(f: &mut Frame, area: Rect, now: &NowPlaying) {
 }
 
 fn render_progress_gauge(f: &mut Frame, area: Rect, now: &NowPlaying) {
+    let (r, g, b) = now.theme_color;
+    let theme_color = Color::Rgb(r, g, b);
     let elapsed = now.elapsed_progress();
     let ratio = if now.duration_ms > 0 {
         elapsed as f64 / now.duration_ms as f64
@@ -144,21 +156,25 @@ fn render_progress_gauge(f: &mut Frame, area: Rect, now: &NowPlaying) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::DarkGray)),
         )
-        .gauge_style(Style::default().fg(Color::Green).bg(Color::Black))
+        .gauge_style(Style::default().fg(theme_color).bg(Color::Black))
         .ratio(ratio.clamp(0.0, 1.0))
         .label(label);
 
     f.render_widget(gauge, area);
 }
 
-fn render_visualizer(f: &mut Frame, area: Rect, bar_states: &[f64]) {
+fn render_visualizer(f: &mut Frame, area: Rect, bar_states: &[f64], now: &NowPlaying) {
+    let (r_base, g_base, b_base) = now.theme_color;
     let bar_data: Vec<Bar> = bar_states
         .iter()
         .enumerate()
         .map(|(i, &h)| {
-            let r = (i * 255 / bar_states.len()) as u8;
-            let g = 255 - r;
-            let color = Color::Rgb(r, g, 150);
+            let intensity = 0.6 + (0.4 * (i as f32 / bar_states.len().max(1) as f32));
+            let color = Color::Rgb(
+                (r_base as f32 * intensity) as u8,
+                (g_base as f32 * intensity) as u8,
+                (b_base as f32 * intensity) as u8,
+            );
             Bar::new(h.round() as u64).style(Style::default().fg(color))
         })
         .collect();

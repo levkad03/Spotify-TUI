@@ -36,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // For now, just logs commands; implement Spotify controls later
-    let control_client = client.clone();
+    let _control_client = client.clone();
     tokio::spawn(async move {
         while let Some(cmd) = control_rx.recv().await {
             match cmd {
