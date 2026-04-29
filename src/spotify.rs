@@ -151,3 +151,5 @@ pub async fn fetch_dominant_color(url: &str) -> Option<(u8, u8, u8)> {
 
     Some((pixel[0], pixel[1], pixel[2]))
 }
+
+// Test
