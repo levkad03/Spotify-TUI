@@ -1,6 +1,12 @@
 use std::time::Instant;
 
 #[derive(Clone, Debug)]
+pub struct QueuedTrack {
+    pub title: String,
+    pub artists: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
 pub struct NowPlaying {
     pub title: String,
     pub artists: Vec<String>,
@@ -13,6 +19,8 @@ pub struct NowPlaying {
     // when the server returned this snapshot (used to advance the progress locally)
     pub fetched_at: Instant,
     pub theme_color: (u8, u8, u8),
+
+    pub queue: Vec<QueuedTrack>,
 }
 
 impl NowPlaying {

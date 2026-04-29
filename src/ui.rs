@@ -1,6 +1,6 @@
 use crate::model::{ControlCommand, NowPlaying};
 use crossterm::{
-    event::{self, Event as CEvent, KeyCode, KeyEvent},
+    event::{self, Event as CEvent, KeyCode, KeyEvent, KeyEventKind},
     execute, terminal,
 };
 use rand::{Rng, RngExt};
@@ -10,7 +10,9 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Bar, BarChart, BarGroup, Block, Borders, Gauge, Paragraph, Wrap},
+    widgets::{
+        Bar, BarChart, BarGroup, Block, Borders, Gauge, List, ListItem, ListState, Paragraph, Wrap,
+    },
 };
 use std::io;
 use std::time::Duration;
@@ -27,6 +29,8 @@ pub fn run_ui(
     let mut current: Option<NowPlaying> = None;
     let mut bar_states = Vec::new();
     let mut rng = rand::rng();
+
+    let mut queue_state = ListState::default();
 
     loop {
         // 1. Sync state: resize bars based on terminal width + check for new spotify data
@@ -56,7 +60,13 @@ pub fn run_ui(
 
             // Create layout inside the border
             let inner_area = Block::default().borders(Borders::ALL).inner(area);
-            let chunks = Layout::default()
+
+            let main_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Min(0), Constraint::Length(40)])
+                .split(inner_area);
+
+            let left_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
                     Constraint::Length(5), // Track info
@@ -64,24 +74,31 @@ pub fn run_ui(
                     Constraint::Min(5),    // Visualizer
                     Constraint::Length(1), // Help
                 ])
-                .split(inner_area);
+                .split(main_chunks[0]);
 
             if let Some(now) = &current {
-                render_track_info(f, chunks[0], now);
-                render_progress_gauge(f, chunks[1], now);
-                render_visualizer(f, chunks[2], &bar_states, now);
+                render_track_info(f, left_chunks[0], now);
+                render_progress_gauge(f, left_chunks[1], now);
+                render_visualizer(f, left_chunks[2], &bar_states, now);
+
+                render_queue(f, main_chunks[1], now, &mut queue_state);
             } else {
-                render_empty_state(f, chunks[0]);
+                render_empty_state(f, left_chunks[0]);
             }
 
-            render_help_bar(f, chunks[3]);
+            render_help_bar(f, left_chunks[3]);
         })?;
 
         // 4. Handle input: check for key presses
         if event::poll(Duration::from_millis(50))? {
             if let CEvent::Key(key) = event::read()? {
-                if handle_input(key, &control_tx) {
-                    break;
+                if key.kind == KeyEventKind::Press {
+                    // Pass the queue state and length to handle scrolling
+
+                    let queue_len = current.as_ref().map(|n| n.queue.len()).unwrap_or(0);
+                    if handle_input(key, &control_tx, &mut queue_state, queue_len) {
+                        break;
+                    }
                 }
             }
         }
@@ -193,6 +210,40 @@ fn render_visualizer(f: &mut Frame, area: Rect, bar_states: &[f64], now: &NowPla
     f.render_widget(visualizer, area);
 }
 
+fn render_queue(f: &mut Frame, area: Rect, now: &NowPlaying, state: &mut ListState) {
+    let (r, g, b) = now.theme_color;
+    let theme_color = Color::Rgb(r, g, b);
+
+    let items: Vec<ListItem> = now
+        .queue
+        .iter()
+        .map(|t| {
+            ListItem::new(vec![
+                Line::from(Span::styled(
+                    &t.title,
+                    Style::default().add_modifier(Modifier::BOLD),
+                )),
+                Line::from(Span::styled(
+                    t.artists.join(", "),
+                    Style::default().fg(Color::Cyan),
+                )),
+            ])
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .title(" Next Up ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray)),
+        )
+        .highlight_style(Style::default().bg(theme_color).fg(Color::Black))
+        .highlight_symbol(">> ");
+
+    f.render_stateful_widget(list, area, state);
+}
+
 fn render_empty_state(f: &mut Frame, area: Rect) {
     let empty = Paragraph::new("No track playing")
         .style(Style::default().fg(Color::DarkGray))
@@ -227,11 +278,42 @@ fn update_animation(bar_states: &mut [f64], is_playing: bool, rng: &mut impl Rng
     }
 }
 
-fn handle_input(key: KeyEvent, control_tx: &Sender<ControlCommand>) -> bool {
+fn handle_input(
+    key: KeyEvent,
+    control_tx: &Sender<ControlCommand>,
+    queue_state: &mut ListState,
+    queue_len: usize,
+) -> bool {
     match key.code {
         KeyCode::Char('q') => {
             let _ = control_tx.try_send(ControlCommand::Quit);
             return true;
+        }
+        KeyCode::Down => {
+            let i = match queue_state.selected() {
+                Some(i) => {
+                    if i >= queue_len.saturating_sub(1) {
+                        0
+                    } else {
+                        i + 1
+                    }
+                }
+                None => 0,
+            };
+            queue_state.select(Some(i));
+        }
+        KeyCode::Up => {
+            let i = match queue_state.selected() {
+                Some(i) => {
+                    if i == 0 {
+                        queue_len.saturating_sub(1)
+                    } else {
+                        i - 1
+                    }
+                }
+                None => 0,
+            };
+            queue_state.select(Some(i));
         }
         KeyCode::Char(' ') => {
             let _ = control_tx.try_send(ControlCommand::PlayPause);

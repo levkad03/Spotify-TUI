@@ -16,6 +16,7 @@ pub async fn spotify_poller(
 
     let mut last_art_url: Option<String> = None;
     let mut current_theme = (30, 215, 96);
+    let mut current_queue = Vec::new();
 
     loop {
         interval.tick().await;
@@ -35,6 +36,7 @@ pub async fn spotify_poller(
                         album_art_url: None,
                         fetched_at: std::time::Instant::now(),
                         theme_color: current_theme,
+                        queue: current_queue.clone(),
                     })
                     .await;
                 continue;
@@ -57,12 +59,19 @@ pub async fn spotify_poller(
                         // Fallback to Spotify Green if there is no album art
                         current_theme = (30, 215, 96);
                     }
+
+                    // Update the queue
+                    if let Ok(queue) = crate::spotify::get_queue(&client, &token).await {
+                        current_queue = queue;
+                    }
+
                     // Update our tracker
                     last_art_url = now.album_art_url.clone();
                 }
 
                 // Apply the theme color to  the current update
                 now.theme_color = current_theme;
+                now.queue = current_queue.clone();
                 let _ = tx.send(now).await;
             }
 
@@ -81,6 +90,7 @@ pub async fn spotify_poller(
                         album_art_url: None,
                         fetched_at: std::time::Instant::now(),
                         theme_color: current_theme,
+                        queue: current_queue.clone(),
                     })
                     .await;
             }

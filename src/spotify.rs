@@ -1,4 +1,4 @@
-use crate::model::NowPlaying;
+use crate::model::{NowPlaying, QueuedTrack};
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -50,6 +50,7 @@ pub async fn get_current_track(
             album_art_url: None,
             fetched_at: std::time::Instant::now(),
             theme_color: (30, 215, 96), // Default spotify green
+            queue: vec![],
         });
     }
 
@@ -59,6 +60,58 @@ pub async fn get_current_track(
     let progress_ms = json["progress_ms"].as_u64().unwrap_or(0);
 
     let item = &json["item"];
+
+    let (title, artists, album, duration_ms, album_art_url) = parse_track_info(item);
+
+    Ok(NowPlaying {
+        title,
+        artists,
+        album,
+        progress_ms,
+        duration_ms,
+        is_playing,
+        album_art_url,
+        fetched_at: std::time::Instant::now(),
+        theme_color: (30, 215, 96), // Default spotify green
+        queue: vec![],
+    })
+}
+
+/// Fetches the user's current queue
+pub async fn get_queue(
+    client: &reqwest::Client,
+    token: &str,
+) -> Result<Vec<QueuedTrack>, Box<dyn std::error::Error>> {
+    let res = client
+        .get("https://api.spotify.com/v1/me/player/queue")
+        .bearer_auth(token)
+        .send()
+        .await?;
+
+    if res.status() != 200 {
+        return Ok(vec![]);
+    }
+
+    let json: serde_json::Value = res.json().await?;
+    let queue = json["queue"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|item| {
+                    let (title, artists, _, _, _) = parse_track_info(item);
+                    QueuedTrack { title, artists }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(queue)
+}
+
+/// Helper to extract common track fields from Spotify JSON
+fn parse_track_info(
+    item: &serde_json::Value,
+) -> (String, Vec<String>, String, u64, Option<String>) {
     let title = item["name"].as_str().unwrap_or("Unknown").to_string();
 
     let artists: Vec<String> = item["artists"]
@@ -74,6 +127,7 @@ pub async fn get_current_track(
         .as_str()
         .unwrap_or("Unknown")
         .to_string();
+
     let duration_ms = item["duration_ms"].as_u64().unwrap_or(0);
 
     let album_art_url = item["album"]["images"]
@@ -82,17 +136,7 @@ pub async fn get_current_track(
         .and_then(|img| img["url"].as_str())
         .map(|s| s.to_string());
 
-    Ok(NowPlaying {
-        title,
-        artists,
-        album,
-        progress_ms,
-        duration_ms,
-        is_playing,
-        album_art_url,
-        fetched_at: std::time::Instant::now(),
-        theme_color: (30, 215, 96), // Default spotify green
-    })
+    (title, artists, album, duration_ms, album_art_url)
 }
 
 pub async fn fetch_dominant_color(url: &str) -> Option<(u8, u8, u8)> {
